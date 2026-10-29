@@ -266,4 +266,118 @@ contract TestPointsHook is Test, Deployers, ERC1155TokenReceiver {
             "Swap count should be 4"
         );
     }
+
+    function test_noPointsForReverseSwap() public {
+        uint256 poolIdUint = uint256(PoolId.unwrap(key.toId()));
+
+        uint256 balanceBefore = hook.balanceOf(
+            address(this),
+            poolIdUint
+        );
+
+        // Swap TOKEN for ETH, not ETH for TOKEN
+        bytes memory hookData = abi.encode(address(this));
+
+        swapRouter.swap(
+            key,
+            SwapParams({
+                zeroForOne: false,
+                amountSpecified: -int256(0.001 ether),
+                sqrtPriceLimitX96: TickMath.MAX_SQRT_PRICE - 1
+            }),
+            PoolSwapTest.TestSettings({
+                takeClaims: false,
+                settleUsingBurn: false
+            }),
+            hookData
+        );
+
+        uint256 balanceAfter = hook.balanceOf(
+            address(this),
+            poolIdUint
+        );
+
+        assertEq(balanceAfter, balanceBefore);
+        assertEq(hook.swapCount(key.toId(), address(this)), 0);
+    }
+
+    function testFuzz_invalidRecipientGetsNoPoints(
+        uint256 swapAmount
+    ) public {
+        swapAmount = bound(
+            swapAmount,
+            0.00001 ether,
+            0.0001 ether
+        );
+
+        uint256 poolIdUint = uint256(PoolId.unwrap(key.toId()));
+
+        uint256 balanceBefore = hook.balanceOf(
+            address(this),
+            poolIdUint
+        );
+
+        // Zero address is not a valid recipient
+        bytes memory hookData = abi.encode(address(0));
+
+        swapRouter.swap{value: swapAmount}(
+            key,
+            SwapParams({
+                zeroForOne: true,
+                amountSpecified: -int256(swapAmount),
+                sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1
+            }),
+            PoolSwapTest.TestSettings({
+                takeClaims: false,
+                settleUsingBurn: false
+            }),
+            hookData
+        );
+
+        uint256 balanceAfter = hook.balanceOf(
+            address(this),
+            poolIdUint
+        );
+
+        assertEq(balanceAfter, balanceBefore);
+        assertEq(hook.swapCount(key.toId(), address(0)), 0);
+    }
+
+    function testFuzz_missingHookDataGetsNoPoints(
+        uint256 swapAmount
+    ) public {
+        vm.assume(
+            swapAmount >= 0.00001 ether &&
+            swapAmount <= 0.0001 ether
+        );
+
+        uint256 poolIdUint = uint256(PoolId.unwrap(key.toId()));
+
+        uint256 balanceBefore = hook.balanceOf(
+            address(this),
+            poolIdUint
+        );
+
+        swapRouter.swap{value: swapAmount}(
+            key,
+            SwapParams({
+                zeroForOne: true,
+                amountSpecified: -int256(swapAmount),
+                sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1
+            }),
+            PoolSwapTest.TestSettings({
+                takeClaims: false,
+                settleUsingBurn: false
+            }),
+            ""
+        );
+
+        uint256 balanceAfter = hook.balanceOf(
+            address(this),
+            poolIdUint
+        );
+
+        assertEq(balanceAfter, balanceBefore);
+        assertEq(hook.swapCount(key.toId(), address(this)), 0);
+    }
 }
