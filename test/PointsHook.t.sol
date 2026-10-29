@@ -67,7 +67,6 @@ contract TestPointsHook is Test, Deployers, ERC1155TokenReceiver {
         );
 
         // Add some liquidity to the pool
-        uint160 sqrtPriceAtTickLower = TickMath.getSqrtPriceAtTick(-60);
         uint160 sqrtPriceAtTickUpper = TickMath.getSqrtPriceAtTick(60);
 
         uint256 ethToAdd = 0.1 ether;
@@ -75,11 +74,6 @@ contract TestPointsHook is Test, Deployers, ERC1155TokenReceiver {
             SQRT_PRICE_1_1,
             sqrtPriceAtTickUpper,
             ethToAdd
-        );
-        uint256 tokenToAdd = LiquidityAmounts.getAmount1ForLiquidity(
-            sqrtPriceAtTickLower,
-            SQRT_PRICE_1_1,
-            liquidityDelta
         );
 
         modifyLiquidityRouter.modifyLiquidity{value: ethToAdd}(
@@ -126,5 +120,150 @@ contract TestPointsHook is Test, Deployers, ERC1155TokenReceiver {
             poolIdUint
         );
         assertEq(pointsBalanceAfterSwap - pointsBalanceOriginal, 2 * 10 ** 14);
+    }
+
+    function test_loyaltyBonus() public {
+        uint256 poolIdUint = uint256(PoolId.unwrap(key.toId()));
+        PoolId poolId = key.toId();
+
+        bytes memory hookData = abi.encode(address(this));
+
+        uint256 swapAmount = 0.001 ether;
+
+        // ---------------------------------
+        // SWAP 1 -> 20%
+        // ---------------------------------
+
+        uint256 balanceBefore = hook.balanceOf(address(this), poolIdUint);
+
+        swapRouter.swap{value: swapAmount}(
+            key,
+            SwapParams({
+                zeroForOne: true,
+                amountSpecified: -int256(swapAmount),
+                sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1
+            }),
+            PoolSwapTest.TestSettings({
+                takeClaims: false,
+                settleUsingBurn: false
+            }),
+            hookData
+        );
+
+        uint256 balanceAfter = hook.balanceOf(address(this), poolIdUint);
+
+        assertEq(
+            balanceAfter - balanceBefore,
+            (swapAmount * 20) / 100,
+            "First swap should award 20%"
+        );
+
+        assertEq(
+            hook.swapCount(poolId, address(this)),
+            1,
+            "Swap count should be 1"
+        );
+
+        // ---------------------------------
+        // SWAP 2 -> 25%
+        // ---------------------------------
+
+        balanceBefore = balanceAfter;
+
+        swapRouter.swap{value: swapAmount}(
+            key,
+            SwapParams({
+                zeroForOne: true,
+                amountSpecified: -int256(swapAmount),
+                sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1
+            }),
+            PoolSwapTest.TestSettings({
+                takeClaims: false,
+                settleUsingBurn: false
+            }),
+            hookData
+        );
+
+        balanceAfter = hook.balanceOf(address(this), poolIdUint);
+
+        assertEq(
+            balanceAfter - balanceBefore,
+            (swapAmount * 25) / 100,
+            "Second swap should award 25%"
+        );
+
+        assertEq(
+            hook.swapCount(poolId, address(this)),
+            2,
+            "Swap count should be 2"
+        );
+
+        // ---------------------------------
+        // SWAP 3 -> 30%
+        // ---------------------------------
+
+        balanceBefore = balanceAfter;
+
+        swapRouter.swap{value: swapAmount}(
+            key,
+            SwapParams({
+                zeroForOne: true,
+                amountSpecified: -int256(swapAmount),
+                sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1
+            }),
+            PoolSwapTest.TestSettings({
+                takeClaims: false,
+                settleUsingBurn: false
+            }),
+            hookData
+        );
+
+        balanceAfter = hook.balanceOf(address(this), poolIdUint);
+
+        assertEq(
+            balanceAfter - balanceBefore,
+            (swapAmount * 30) / 100,
+            "Third swap should award 30%"
+        );
+
+        assertEq(
+            hook.swapCount(poolId, address(this)),
+            3,
+            "Swap count should be 3"
+        );
+
+        // ---------------------------------
+        // SWAP 4 -> 35%
+        // ---------------------------------
+
+        balanceBefore = balanceAfter;
+
+        swapRouter.swap{value: swapAmount}(
+            key,
+            SwapParams({
+                zeroForOne: true,
+                amountSpecified: -int256(swapAmount),
+                sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1
+            }),
+            PoolSwapTest.TestSettings({
+                takeClaims: false,
+                settleUsingBurn: false
+            }),
+            hookData
+        );
+
+        balanceAfter = hook.balanceOf(address(this), poolIdUint);
+
+        assertEq(
+            balanceAfter - balanceBefore,
+            (swapAmount * 35) / 100,
+            "Fourth swap should award 35%"
+        );
+
+        assertEq(
+            hook.swapCount(poolId, address(this)),
+            4,
+            "Swap count should be 4"
+        );
     }
 }

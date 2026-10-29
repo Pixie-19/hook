@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.26;
+pragma solidity ^0.8.26;
 
 import {BaseHook} from "v4-periphery/src/utils/BaseHook.sol";
 import {ERC1155} from "solmate/src/tokens/ERC1155.sol";
@@ -15,6 +15,16 @@ import {IPoolManager} from "v4-core/interfaces/IPoolManager.sol";
 import {Hooks} from "v4-core/libraries/Hooks.sol";
 
 contract PointsHook is BaseHook, ERC1155 {
+    // Track eligible swaps for each user in each pool
+    mapping(PoolId => mapping(address => uint256))
+        public swapCount;
+
+    event LoyaltyPointsAwarded(
+        address indexed user,
+        uint256 indexed poolId,
+        uint256 swapNumber,
+        uint256 points
+    );
     constructor(IPoolManager _manager) BaseHook(_manager) {}
 
     function getHookPermissions()
@@ -69,10 +79,49 @@ contract PointsHook is BaseHook, ERC1155 {
         //      amount of ETH they spent is equal to BalanceDelta.amount0()
 
         uint256 ethSpendAmount = uint256(int256(-delta.amount0()));
-        uint256 pointsForSwap = ethSpendAmount / 5;
 
-        // Mint the points
-        _assignPoints(key.toId(), hookData, pointsForSwap);
+        // Skip swaps without a valid encoded recipient
+        if (hookData.length != 32) {
+            return (this.afterSwap.selector, 0);
+        }
+
+        address user = abi.decode(hookData, (address));
+
+        if (user == address(0)) {
+            return (this.afterSwap.selector, 0);
+        }
+
+        PoolId poolId = key.toId();
+
+        // Increase the eligible swap count for this user
+        swapCount[poolId][user]++;
+
+        uint256 count = swapCount[poolId][user];
+
+        // Base reward is 20%
+        // Each repeat swap adds 5%, capped at 35%
+        uint256 rewardPercentage = 20;
+
+        if (count == 2) {
+            rewardPercentage = 25;
+        } else if (count == 3) {
+            rewardPercentage = 30;
+        } else if (count >= 4) {
+            rewardPercentage = 35;
+        }
+
+        uint256 pointsForSwap =
+            (ethSpendAmount * rewardPercentage) / 100;
+
+        // Mint ERC1155 loyalty points
+        _assignPoints(poolId, hookData, pointsForSwap);
+
+        emit LoyaltyPointsAwarded(
+            user,
+            uint256(PoolId.unwrap(poolId)),
+            count,
+            pointsForSwap
+        );
 
         return (this.afterSwap.selector, 0);
     }
